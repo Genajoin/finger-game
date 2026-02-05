@@ -41,8 +41,8 @@
     }
 
     video {
-      width: 400px;
-      height: 300px;
+      width: 640px;
+      height: 480px;
       object-fit: cover;
       transform: scaleX(-1); /* зеркальное отражение видео */
     }
@@ -104,6 +104,65 @@
       transform: scale(1.05);
       box-shadow: 0 6px 18px rgba(108,92,231,0.4);
     }
+
+    button.pause-btn {
+      margin-top: 10px;
+      padding: 12px 25px;
+      font-size: 1rem;
+      border: none;
+      background-color: #f39c12;
+      color: white;
+      border-radius: 50px;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    button.pause-btn:hover {
+      transform: scale(1.05);
+      box-shadow: 0 6px 18px rgba(243,156,18,0.4);
+    }
+
+    button.pause-btn.paused {
+      background-color: #e74c3c;
+    }
+
+    /* Таймер обратного отсчёта */
+    .timer-bar {
+      width: 100%;
+      height: 8px;
+      background: #ecf0f1;
+      border-radius: 4px;
+      overflow: hidden;
+      margin-top: 15px;
+    }
+
+    .timer-progress {
+      height: 100%;
+      background: linear-gradient(90deg, #2ecc71, #f39c12, #e74c3c);
+      width: 100%;
+      transition: width 0.1s linear;
+      border-radius: 4px;
+    }
+
+    /* Счётчик очков */
+    .score-board {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      padding: 15px;
+      border-radius: 15px;
+      margin-bottom: 15px;
+      text-align: center;
+      color: white;
+    }
+
+    .score-board .score {
+      font-size: 2rem;
+      font-weight: bold;
+    }
+
+    .score-board .label {
+      font-size: 0.9rem;
+      opacity: 0.9;
+    }
   </style>
 </head>
 <body>
@@ -117,29 +176,48 @@
   </div>
 
   <div class="info-panel">
+    <div class="score-board">
+      <div class="score" id="score">0</div>
+      <div class="label">Очков</div>
+    </div>
     <p>Покажи на пальцах:</p>
     <div class="target" id="targetNum">?</div>
-    <div class="feedback" id="feedbackText">Нажми «Старт», чтобы начать!</div>
-    <button class="start-btn" onclick="startGame()">▶ Старт</button>
+    <div class="timer-bar">
+      <div class="timer-progress" id="timerProgress"></div>
+    </div>
+    <div class="feedback" id="feedbackText">Загрузка...</div>
+    <div id="loadingIndicator" style="font-size: 0.8rem; color: #7f8c8d; margin-top: 10px;">Загрузка MediaPipe...</div>
+    <button class="start-btn" id="startBtn" onclick="toggleGame()" disabled>▶ Старт</button>
+    <button class="pause-btn" id="pauseBtn" onclick="togglePause()" style="display: none;">⏸ Пауза</button>
   </div>
 </div>
 
-<!-- Подключаем MediaPipe -->
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+<!-- Подключаем MediaPipe - используем работающие версии CDN -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
 
 <script>
   // --- Конфигурация игры ---
   const MAX_FINGERS = 10; // Для двух рук (по 5 пальцев на каждую)
-  const TARGET_DURATION = 5000; // 5 секунд на задание (если не угадал)
-  const CORRECT_DELAY = 4000; // 4 секунды задержка после правильного ответа
+  const TARGET_DURATION = 8000; // 8 секунд на задание (если не угадал)
+  const CORRECT_DELAY = 2000; // 2 секунды показа "правильно" перед задержкой
+  const BETWEEN_TASKS_DELAY = 1500; // 1.5 секунды задержки между заданиями
+  const CONSENSUS_FRAMES = 14; // сколько кадров помнить (~400-500ms)
+  const CONSENSUS_THRESHOLD = 0.8; // 80% совпадений для стабильности
   let currentTarget = -1;
   let gameActive = false;
+  let gamePaused = false;
   let lastTimeCorrect = 0;
   let stateStartTime = 0;
-  let gameMode = "ask"; // "ask" (задание), "correct" (правильно), "timeout" (время вышло)
+  let gameMode = "ask"; // "ask" (задание), "correct" (правильно), "timeout" (время вышло), "delay" (задержка)
+  let score = 0;
+  let pauseTimeRemaining = 0; // Для сохранения оставшегося времени при паузе
+
+  // Буфер для стабилизации консенсусом
+  let consensusBuffer = []; // кольцевой буфер последних N значений
+  let processingCorrect = false; // флаг блокировки повторной обработки
+  let displayCount = null; // последнее стабильное значение для отображения
 
   // DOM-элементы
   const videoElement = document.getElementById('webcam');
@@ -147,12 +225,28 @@
   const ctx = canvas.getContext('2d');
   const targetEl = document.getElementById('targetNum');
   const feedbackEl = document.getElementById('feedbackText');
+  const startBtn = document.getElementById('startBtn');
+  const pauseBtn = document.getElementById('pauseBtn');
+  const scoreEl = document.getElementById('score');
+  const timerProgressEl = document.getElementById('timerProgress');
+  const loadingIndicator = document.getElementById('loadingIndicator');
 
   let hands;
   let camera;
 
   // Инициализация MediaPipe
   async function setupMediaPipe() {
+    // Проверяем, загрузились ли скрипты MediaPipe
+    if (typeof Hands === 'undefined') {
+      throw new Error('MediaPipe Hands не загружен. Проверьте подключение к интернету.');
+    }
+    if (typeof Camera === 'undefined') {
+      throw new Error('MediaPipe Camera не загружен. Проверьте подключение к интернету.');
+    }
+    if (typeof drawConnectors === 'undefined') {
+      throw new Error('MediaPipe Drawing utils не загружен.');
+    }
+
     hands = new Hands({
       locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
     });
@@ -165,14 +259,14 @@
     });
 
     hands.onResults((results) => {
-      if (!gameActive) return;
+      if (!gameActive || gamePaused) return;
       processFrame(results);
     });
 
     camera = new Camera(videoElement, {
       onFrame: async () => await hands.send({image: videoElement}),
-      width: 400,
-      height: 300
+      width: 640,
+      height: 480
     });
   }
 
@@ -182,39 +276,160 @@
 
     for (const landmarks of landmarksList) {
       const tips = [8, 12, 16, 20]; // Кончики указательного, среднего, безымянного, мизинца
+      const pips = [6, 10, 14, 18]; // Средние суставы (PIP)
       const thumbTip = 4;
       const thumbIP = 3;
+      const thumbMCP = 2;
       const wrist = landmarks[0];
-      const middleFinger = landmarks[12];
+      const indexMCP = landmarks[5];
+      const pinkyMCP = landmarks[17];
 
       let count = 0;
 
+      // Вспомогательная функция для расстояния
+      function dist(p1, p2) {
+        return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
+      }
+
+      // Вспомогательная функция для угла между тремя точками (в градусах)
+      function angle(a, b, c) {
+        const ab = { x: b.x - a.x, y: b.y - a.y };
+        const cb = { x: b.x - c.x, y: b.y - c.y };
+        const dot = ab.x * cb.x + ab.y * cb.y;
+        const magAB = Math.sqrt(ab.x * ab.x + ab.y * ab.y);
+        const magCB = Math.sqrt(cb.x * cb.x + cb.y * cb.y);
+        if (magAB === 0 || magCB === 0) return 0;
+        const cosAngle = Math.max(-1, Math.min(1, dot / (magAB * magCB)));
+        return Math.acos(cosAngle) * (180 / Math.PI);
+      }
+
       // 1. Проверяем 4 пальца (указательный, средний, безымянный, мизинец)
-      for (const tip of tips) {
-        const dip = tip - 2; 
-        if (landmarks[tip].y < landmarks[dip].y) {
+      // Используем комбинацию: расстояние от MCP + угол сгиба
+      const mcps = [5, 9, 13, 17]; // MCP суставы (основания пальцев)
+
+      for (let i = 0; i < tips.length; i++) {
+        const tip = landmarks[tips[i]];
+        const pip = landmarks[pips[i]];
+        const mcp = landmarks[mcps[i]];
+        const dip = landmarks[tips[i] - 1]; // DIP сустав (между PIP и tip)
+
+        // Проверка 1: кончик должен быть дальше от MCP чем PIP
+        const distTipToMCP = dist(tip, mcp);
+        const distPipToMCP = dist(pip, mcp);
+        const extendedRatio = distTipToMCP / distPipToMCP;
+
+        // Проверка 2: угол сгиба в PIP должен быть почти прямым (>140°)
+        const pipAngle = angle(tip, pip, mcp);
+
+        // Проверка 3: расстояние от запястья
+        const distTipToWrist = dist(tip, wrist);
+        const distMcpToWrist = dist(mcp, wrist);
+        const reachRatio = distTipToWrist / distMcpToWrist;
+
+        // Палец разогнут только если выполнены ВСЕ условия (тонкая настройка)
+        if (extendedRatio > 1.2 && pipAngle > 115 && reachRatio > 1.3) {
           count++;
         }
       }
 
       // 2. Проверяем большой палец
-      // Определяем руку (левая или правая)
-      const isRightHand = wrist.x < middleFinger.y;
+      const thumbTipPos = landmarks[thumbTip];
+      const thumbIPPos = landmarks[thumbIP];
+      const thumbMCPPos = landmarks[thumbMCP];
+      const indexTipPos = landmarks[8];   // кончик указательного
+      const indexMCPPos = landmarks[5];   // основание указательного
+      const indexPIPPos = landmarks[6];   // средний сустав указательного
 
-      if (isRightHand) {
-        if (landmarks[thumbTip].x < landmarks[thumbIP].x) {
-          count += 1;
-        }
-      } else {
-        if (landmarks[thumbTip].x > landmarks[thumbIP].x) {
-          count += 1;
-        }
+      // Проверка 1: угол в суставе большого пальца (должен быть разогнут)
+      const thumbAngle = angle(thumbTipPos, thumbIPPos, thumbMCPPos);
+
+      // Проверка 2: кончик большого пальца должен быть далеко от его основания
+      const thumbLength = dist(thumbTipPos, thumbMCPPos);
+      const thumbBaseToWrist = dist(thumbMCPPos, wrist);
+
+      // Проверка 3: большой палец не должен быть согнут внутрь (как в кулаке)
+      // Проверяем, что кончик дальше от запястья чем IP сустав
+      const thumbTipToWrist = dist(thumbTipPos, wrist);
+      const thumbIPToWrist = dist(thumbIPPos, wrist);
+
+      // Проверка 4: большой палец должен быть сильно отстранен от указательного пальца
+      // В кулаке большой палец прижат к указательному, при показе "5" - далеко
+      const distThumbToIndexTip = dist(thumbTipPos, indexTipPos);
+      const indexLength = dist(indexTipPos, indexMCPPos);
+
+      // Большой палец "отстранен", если кончик очень далеко от кончика указательного
+      // (минимум 130% длины указательного пальца - максимально жесткое требование)
+      const thumbIsSeparated = distThumbToIndexTip > indexLength * 1.3;
+
+      // Проверка 5: направление большого пальца должно отличаться от направления указательного
+      // В кулаке они направлены примерно в одну сторону (внутрь)
+      const thumbDir = { x: thumbTipPos.x - thumbMCPPos.x, y: thumbTipPos.y - thumbMCPPos.y };
+      const indexDir = { x: indexTipPos.x - indexMCPPos.x, y: indexTipPos.y - indexMCPPos.y };
+      const dotProduct = thumbDir.x * indexDir.x + thumbDir.y * indexDir.y;
+      const thumbMag = Math.sqrt(thumbDir.x * thumbDir.x + thumbDir.y * thumbDir.y);
+      const indexMag = Math.sqrt(indexDir.x * indexDir.x + indexDir.y * indexDir.y);
+      const angleBetween = thumbMag > 0 && indexMag > 0
+        ? Math.acos(Math.max(-1, Math.min(1, dotProduct / (thumbMag * indexMag)))) * (180 / Math.PI)
+        : 0;
+
+      // Большой палец должен быть направлен сильно иначе чем указательный (>45° разницы)
+      const thumbHasDifferentDirection = angleBetween > 45;
+
+      // Большой палец разогнут только если:
+      // - угол > 150° (почти идеально прямой - строгое требование)
+      // - длина от MCP до tip достаточно большая (>70% от расстояния до запястья)
+      // - кончик дальше от запястья чем IP
+      // - палец сильно отстранен от указательного
+      // - направление отличается от указательного (не параллелен кулаку)
+      if (thumbAngle > 150 && thumbLength > thumbBaseToWrist * 0.7 &&
+          thumbTipToWrist > thumbIPToWrist && thumbIsSeparated && thumbHasDifferentDirection) {
+        count += 1;
       }
 
       totalCount += count;
     }
 
     return Math.min(totalCount, MAX_FINGERS);
+  }
+
+  // Получить стабильное значение через консенсус буфера
+  function getConsensusValue(rawCount) {
+    // Добавляем текущее значение в буфер
+    consensusBuffer.push(rawCount);
+
+    // Ограничиваем размер буфера
+    if (consensusBuffer.length > CONSENSUS_FRAMES) {
+      consensusBuffer.shift();
+    }
+
+    // Если буфер недостаточно заполнен, возвращаем null (нет стабильного значения)
+    if (consensusBuffer.length < CONSENSUS_FRAMES * 0.5) {
+      return null;
+    }
+
+    // Считаем частоту каждого значения
+    const frequency = {};
+    for (const value of consensusBuffer) {
+      frequency[value] = (frequency[value] || 0) + 1;
+    }
+
+    // Находим значение с максимальной частотой
+    let maxCount = 0;
+    let consensusValue = null;
+    for (const [value, count] of Object.entries(frequency)) {
+      if (count > maxCount) {
+        maxCount = count;
+        consensusValue = parseInt(value);
+      }
+    }
+
+    // Проверяем порог консенсуса
+    const consensusRatio = maxCount / consensusBuffer.length;
+    if (consensusRatio >= CONSENSUS_THRESHOLD) {
+      return consensusValue;
+    }
+
+    return null; // Нет стабильного консенсуса
   }
 
   function processFrame(results) {
@@ -224,6 +439,8 @@
     const landmarksList = results.multiHandLandmarks;
 
     if (!landmarksList || landmarksList.length === 0) {
+      // Очищаем буфер если рук нет
+      consensusBuffer = [];
       feedbackEl.textContent = "Покажи на пальцах!";
       feedbackEl.className = "feedback";
       return;
@@ -238,47 +455,92 @@
       ctx.translate(-canvas.width / 2, -canvas.height / 2);
 
       // Рисуем руку
-      drawConnectors(ctx, landmarks, HAND_CONNECTIONS, {color: '#00FF00', lineWidth: 5});
-      drawLandmarks(ctx, landmarks, {color: '#FF0000', lineWidth: 2});
+      drawConnectors(ctx, landmarks, HAND_CONNECTIONS, {color: '#00FF00', lineWidth: 2});
+      drawLandmarks(ctx, landmarks, {color: '#FF0000', lineWidth: 1, radius: 2});
 
       ctx.restore(); // возвращаем состояние контекста
     }
 
-    const fingerCount = countFingers(landmarksList);
-    
-    feedbackEl.textContent = `Вижу ${fingerCount} пальца(ов)`;
+    const rawFingerCount = countFingers(landmarksList);
+    const stableCount = getConsensusValue(rawFingerCount);
 
-    if (currentTarget !== -1 && fingerCount === currentTarget) {
-      handleCorrect(fingerCount);
+    // Обновляем отображение только при стабильном значении (плавность)
+    if (stableCount !== null) {
+      displayCount = stableCount;
+    }
+    // Если нет стабильного значения, показываем "..." или последнее стабильное
+    const displayText = displayCount !== null ? displayCount : "...";
+    feedbackEl.textContent = `Вижу ${displayText} пальца(ов)`;
+
+    // Проверяем правильность только если есть стабильное значение и мы в режиме "ask"
+    if (gameMode === "ask" && !processingCorrect && stableCount !== null && currentTarget !== -1 && stableCount === currentTarget) {
+      handleCorrect(stableCount);
     }
 
-    // Проверка таймаута задания
+    // Проверка таймаута задания и обновление таймера
     if (gameMode === "ask") {
       const now = Date.now();
-      if (now - stateStartTime > TARGET_DURATION) {
+      const elapsed = now - stateStartTime;
+      const remaining = Math.max(0, TARGET_DURATION - elapsed);
+      const progress = (remaining / TARGET_DURATION) * 100;
+      timerProgressEl.style.width = progress + '%';
+
+      // Меняем цвет таймера при малом времени
+      if (progress < 30) {
+        timerProgressEl.style.background = '#e74c3c';
+      } else if (progress < 60) {
+        timerProgressEl.style.background = '#f39c12';
+      } else {
+        timerProgressEl.style.background = 'linear-gradient(90deg, #2ecc71, #f39c12, #e74c3c)';
+      }
+
+      if (elapsed > TARGET_DURATION) {
         gameMode = "timeout";
         feedbackEl.textContent = "Время вышло! Попробуй ещё раз.";
         feedbackEl.className = "feedback error";
+        timerProgressEl.style.width = '0%';
         setTimeout(() => {
-          nextTarget();
+          // Показываем задержку перед следующим заданием
+          gameMode = "delay";
+          targetEl.textContent = "...";
+          feedbackEl.textContent = "Готовься к следующему...";
+          feedbackEl.className = "feedback";
+          setTimeout(() => {
+            nextTarget();
+          }, BETWEEN_TASKS_DELAY);
         }, 2000);
       }
+    } else {
+      // Скрываем таймер если не в режиме задания
+      timerProgressEl.style.width = gameMode === "delay" ? '100%' : '0%';
     }
   }
 
   function handleCorrect(count) {
-    const now = Date.now();
-    if (now - lastTimeCorrect > 800) { 
-      gameMode = "correct";
-      feedbackEl.textContent = "Молодец! Правильно! 🎉";
-      feedbackEl.className = "feedback success";
-      playSound(true);
-      
+    // Блокируем повторную обработку
+    processingCorrect = true;
+    lastTimeCorrect = Date.now();
+
+    gameMode = "correct";
+    feedbackEl.textContent = "Молодец! Правильно! 🎉";
+    feedbackEl.className = "feedback success";
+    playSound(true);
+
+    // Увеличиваем счёт
+    score += 10;
+    scoreEl.textContent = score;
+
+    setTimeout(() => {
+      // Показываем задержку перед следующим заданием
+      gameMode = "delay";
+      targetEl.textContent = "...";
+      feedbackEl.textContent = "Готовься к следующему...";
+      feedbackEl.className = "feedback";
+
       setTimeout(() => {
-        lastTimeCorrect = now;
         nextTarget();
-      }, CORRECT_DELAY);
-    }
+      }, BETWEEN_TASKS_DELAY);
+    }, CORRECT_DELAY);
   }
 
   function nextTarget() {
@@ -288,10 +550,65 @@
     feedbackEl.className = "feedback";
     gameMode = "ask";
     stateStartTime = Date.now();
-    
+
+    // Сбрасываем таймер
+    timerProgressEl.style.width = '100%';
+    timerProgressEl.style.background = 'linear-gradient(90deg, #2ecc71, #f39c12, #e74c3c)';
+
+    // Сбрасываем буфер консенсуса и флаг обработки для нового задания
+    consensusBuffer = [];
+    processingCorrect = false;
+    displayCount = null;
+
     targetEl.style.animation = 'none';
-    void targetEl.offsetHeight; 
+    void targetEl.offsetHeight;
     targetEl.style.animation = 'popIn 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
+  }
+
+  // Переключение игры (старт/стоп)
+  function toggleGame() {
+    if (gameActive) {
+      stopGame();
+    } else {
+      startGame();
+    }
+  }
+
+  // Остановка игры
+  function stopGame() {
+    gameActive = false;
+    gamePaused = false;
+    startBtn.textContent = "▶ Старт";
+    pauseBtn.style.display = "none";
+    targetEl.textContent = "?";
+    feedbackEl.textContent = "Нажми «Старт», чтобы начать!";
+    feedbackEl.className = "feedback";
+    timerProgressEl.style.width = '0%';
+    score = 0;
+    scoreEl.textContent = score;
+
+    if (camera) {
+      camera.stop();
+    }
+  }
+
+  // Пауза/Продолжение
+  function togglePause() {
+    gamePaused = !gamePaused;
+
+    if (gamePaused) {
+      pauseBtn.textContent = "▶ Продолжить";
+      pauseBtn.classList.add("paused");
+      feedbackEl.textContent = "Игра на паузе";
+      feedbackEl.className = "feedback";
+    } else {
+      pauseBtn.textContent = "⏸ Пауза";
+      pauseBtn.classList.remove("paused");
+      feedbackEl.textContent = "Покажи на пальцах!";
+      feedbackEl.className = "feedback";
+      // Сбрасываем время начала задания чтобы компенсировать паузу
+      stateStartTime = Date.now();
+    }
   }
 
   function playSound(isSuccess) {
@@ -322,29 +639,84 @@
   async function startGame() {
     if (gameActive) return;
 
+    console.log("Starting game...");
     feedbackEl.textContent = "Разрешите доступ к камере...";
-    
+
     try {
+      console.log("Setting up MediaPipe...");
       await setupMediaPipe();
+      console.log("Starting camera...");
       await camera.start();
+      console.log("Camera started!");
       gameActive = true;
+      gamePaused = false;
+      score = 0;
+      scoreEl.textContent = score;
+      startBtn.textContent = "⏹ Стоп";
+      pauseBtn.style.display = "inline-block";
+      pauseBtn.textContent = "⏸ Пауза";
+      pauseBtn.classList.remove("paused");
       nextTarget();
       feedbackEl.textContent = "Покажи на пальцах!";
       feedbackEl.className = "feedback";
     } catch (err) {
-      console.error(err);
-      feedbackEl.textContent = "Камера не найдена или доступ запрещён.";
+      console.error("Error starting game:", err);
+      feedbackEl.textContent = "Ошибка: " + err.message;
       feedbackEl.className = "feedback error";
     }
   }
 
-  // Предзагрузка
+  // Предзагрузка - проверка загрузки скриптов
   window.onload = async () => {
+    console.log("Page loaded, waiting for MediaPipe...");
+
+    // Ждём загрузки скриптов MediaPipe
+    let attempts = 0;
+    const maxAttempts = 100; // 10 секунд максимум
+
+    const checkLoaded = () => {
+      const loaded = typeof Hands !== 'undefined' &&
+             typeof Camera !== 'undefined' &&
+             typeof drawConnectors !== 'undefined' &&
+             typeof drawLandmarks !== 'undefined' &&
+             typeof HAND_CONNECTIONS !== 'undefined';
+      console.log("Checking MediaPipe:", loaded, {
+        Hands: typeof Hands,
+        Camera: typeof Camera,
+        drawConnectors: typeof drawConnectors,
+        HAND_CONNECTIONS: typeof HAND_CONNECTIONS
+      });
+      return loaded;
+    };
+
+    while (!checkLoaded() && attempts < maxAttempts) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      attempts++;
+      if (attempts % 10 === 0) {
+        loadingIndicator.textContent = `Загрузка MediaPipe... (${attempts/10}s)`;
+      }
+    }
+
+    if (!checkLoaded()) {
+      console.error("MediaPipe scripts failed to load");
+      loadingIndicator.textContent = "Ошибка загрузки. Обновите страницу.";
+      feedbackEl.textContent = "Ошибка: не удалось загрузить MediaPipe";
+      feedbackEl.className = "feedback error";
+      startBtn.disabled = true;
+      return;
+    }
+
+    loadingIndicator.style.display = "none";
+    startBtn.disabled = false;
+    feedbackEl.textContent = "Нажми «Старт», чтобы начать!";
+
     try {
       await setupMediaPipe();
-      document.querySelector('.start-btn').textContent = "▶ Начать игру";
+      startBtn.textContent = "▶ Начать игру";
+      console.log("MediaPipe initialized successfully!");
     } catch (e) {
-      console.warn("Preload failed:", e);
+      console.error("Setup failed:", e);
+      startBtn.textContent = "▶ Начать игру";
     }
   };
 </script>
