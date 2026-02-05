@@ -37,8 +37,8 @@
 ### 1. Клонирование репозитория
 
 ```bash
-git clone <URL_репозитория>
-cd pygame-glm47flash
+git clone https://github.com/Genajoin/finger-game
+cd finger-game
 ```
 
 ### 2. Создание виртуального окружения (рекомендуется)
@@ -79,7 +79,7 @@ python -m http.server 8000
 ## 📁 Структура проекта
 
 ```
-pygame-glm47flash/
+finger-game/
 ├── finger_game.py      # Python-версия игры
 ├── index.html          # Web-версия игры
 ├── requirements.txt    # Зависимости Python
