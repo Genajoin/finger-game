@@ -336,53 +336,23 @@
       const thumbTipPos = landmarks[thumbTip];
       const thumbIPPos = landmarks[thumbIP];
       const thumbMCPPos = landmarks[thumbMCP];
-      const indexTipPos = landmarks[8];   // кончик указательного
-      const indexMCPPos = landmarks[5];   // основание указательного
-      const indexPIPPos = landmarks[6];   // средний сустав указательного
 
       // Проверка 1: угол в суставе большого пальца (должен быть разогнут)
       const thumbAngle = angle(thumbTipPos, thumbIPPos, thumbMCPPos);
 
-      // Проверка 2: кончик большого пальца должен быть далеко от его основания
-      const thumbLength = dist(thumbTipPos, thumbMCPPos);
+      // Проверка 2: расстояние от кончика до запястья
+      const thumbTipToWrist = dist(thumbTipPos, wrist);
       const thumbBaseToWrist = dist(thumbMCPPos, wrist);
 
-      // Проверка 3: большой палец не должен быть согнут внутрь (как в кулаке)
-      // Проверяем, что кончик дальше от запястья чем IP сустав
-      const thumbTipToWrist = dist(thumbTipPos, wrist);
+      // Проверка 3: большой палец не должен быть согнут внутрь
       const thumbIPToWrist = dist(thumbIPPos, wrist);
 
-      // Проверка 4: большой палец должен быть сильно отстранен от указательного пальца
-      // В кулаке большой палец прижат к указательному, при показе "5" - далеко
-      const distThumbToIndexTip = dist(thumbTipPos, indexTipPos);
-      const indexLength = dist(indexTipPos, indexMCPPos);
-
-      // Большой палец "отстранен", если кончик очень далеко от кончика указательного
-      // (минимум 130% длины указательного пальца - максимально жесткое требование)
-      const thumbIsSeparated = distThumbToIndexTip > indexLength * 1.3;
-
-      // Проверка 5: направление большого пальца должно отличаться от направления указательного
-      // В кулаке они направлены примерно в одну сторону (внутрь)
-      const thumbDir = { x: thumbTipPos.x - thumbMCPPos.x, y: thumbTipPos.y - thumbMCPPos.y };
-      const indexDir = { x: indexTipPos.x - indexMCPPos.x, y: indexTipPos.y - indexMCPPos.y };
-      const dotProduct = thumbDir.x * indexDir.x + thumbDir.y * indexDir.y;
-      const thumbMag = Math.sqrt(thumbDir.x * thumbDir.x + thumbDir.y * thumbDir.y);
-      const indexMag = Math.sqrt(indexDir.x * indexDir.x + indexDir.y * indexDir.y);
-      const angleBetween = thumbMag > 0 && indexMag > 0
-        ? Math.acos(Math.max(-1, Math.min(1, dotProduct / (thumbMag * indexMag)))) * (180 / Math.PI)
-        : 0;
-
-      // Большой палец должен быть направлен сильно иначе чем указательный (>45° разницы)
-      const thumbHasDifferentDirection = angleBetween > 45;
-
-      // Большой палец разогнут только если:
-      // - угол > 150° (почти идеально прямой - строгое требование)
-      // - длина от MCP до tip достаточно большая (>70% от расстояния до запястья)
-      // - кончик дальше от запястья чем IP
-      // - палец сильно отстранен от указательного
-      // - направление отличается от указательного (не параллелен кулаку)
-      if (thumbAngle > 150 && thumbLength > thumbBaseToWrist * 0.7 &&
-          thumbTipToWrist > thumbIPToWrist && thumbIsSeparated && thumbHasDifferentDirection) {
+      // Большой палец разогнут если:
+      // - угол > 140° (прямой)
+      // - кончик далеко от запястья (>90% длины от основания до запястья)
+      // - кончик дальше от запястья чем IP (не согнут внутрь)
+      if (thumbAngle > 140 && thumbTipToWrist > thumbBaseToWrist * 0.9 &&
+          thumbTipToWrist > thumbIPToWrist) {
         count += 1;
       }
 
