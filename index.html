@@ -756,7 +756,7 @@
           handleTimeout();
         }
       }
-    }, 50);
+    }, 200);
   }
 
   function stopTimerLoop() {
@@ -878,12 +878,16 @@
     }
   }
 
-  // rAF loop to feed frames to MediaPipe
+  // rAF loop to feed frames to MediaPipe (throttled to every 3rd frame)
+  let frameSkipCount = 0;
   function startProcessingLoop() {
     stopProcessingLoop();
+    frameSkipCount = 0;
 
     async function loop() {
-      if (videoEl.readyState >= 2 && hands) {
+      frameSkipCount++;
+      if (frameSkipCount >= 3 && videoEl.readyState >= 2 && hands) {
+        frameSkipCount = 0;
         try {
           await hands.send({ image: videoEl });
         } catch (e) {
@@ -932,6 +936,9 @@
     feedbackCard.textContent = '\u0420\u0430\u0437\u0440\u0435\u0448\u0438\u0442\u0435 \u0434\u043E\u0441\u0442\u0443\u043F \u043A \u043A\u0430\u043C\u0435\u0440\u0435...';
 
     try {
+      if (!hands) {
+        await initMediaPipe();
+      }
       await startCamera(currentFacingMode);
       startProcessingLoop();
 
@@ -955,6 +962,16 @@
     stopTimerLoop();
     stopProcessingLoop();
 
+    if (hands) {
+      hands.close();
+      hands = null;
+    }
+
+    if (sharedAudioCtx && sharedAudioCtx.state !== 'closed') {
+      sharedAudioCtx.close();
+      sharedAudioCtx = null;
+    }
+
     if (currentStream) {
       currentStream.getTracks().forEach(t => t.stop());
       currentStream = null;
@@ -974,11 +991,24 @@
   }
 
   // ========== Sound ==========
+  let sharedAudioCtx = null;
+
+  function getAudioContext() {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return null;
+    if (!sharedAudioCtx || sharedAudioCtx.state === 'closed') {
+      sharedAudioCtx = new AC();
+    }
+    if (sharedAudioCtx.state === 'suspended') {
+      sharedAudioCtx.resume();
+    }
+    return sharedAudioCtx;
+  }
+
   function playSound(isSuccess) {
     try {
-      const AC = window.AudioContext || window.webkitAudioContext;
-      if (!AC) return;
-      const actx = new AC();
+      const actx = getAudioContext();
+      if (!actx) return;
       const osc = actx.createOscillator();
       const gain = actx.createGain();
       osc.connect(gain);
@@ -993,6 +1023,10 @@
         osc.start();
         osc.stop(actx.currentTime + 0.5);
       }
+      osc.onended = () => {
+        osc.disconnect();
+        gain.disconnect();
+      };
     } catch (e) { /* ignore */ }
   }
 
