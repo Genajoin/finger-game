@@ -189,6 +189,7 @@
       width: clamp(140px, 40vw, 220px);
       height: clamp(140px, 40vw, 220px);
       transform: rotate(-90deg);
+      flex-shrink: 0;
     }
     .timer-ring-bg {
       fill: none;
@@ -359,6 +360,60 @@
     .anim-pop { animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
     .anim-correct { animation: correctPulse 0.5s ease-out; }
     .anim-shake { animation: shake 0.5s ease-out; }
+
+    /* --- Portrait mode - large circle and digit --- */
+    @media (orientation: portrait) {
+      .timer-ring {
+        width: 98vmin;
+        height: 98vmin;
+      }
+      .target-number {
+        font-size: 65vmin;
+        font-weight: 900;
+        -webkit-text-stroke: 4px rgba(255, 255, 255, 0.9);
+        paint-order: stroke fill;
+        text-shadow: 0 4px 30px rgba(0,0,0,0.9), 0 0 60px rgba(0,0,0,0.6);
+      }
+    }
+
+    /* --- Landscape mode - fit within available height --- */
+    @media (orientation: landscape) and (max-height: 500px) {
+      .center-area {
+        flex: 0 1 auto;
+        min-height: 0;
+        overflow: hidden;
+      }
+      .timer-ring {
+        width: clamp(80px, 35vh, 150px);
+        height: clamp(80px, 35vh, 150px);
+      }
+      .target-number {
+        font-size: clamp(2.5rem, 25vh, 5rem);
+      }
+      .target-hint {
+        margin-top: 4px;
+        font-size: 0.8rem;
+      }
+      .bottom-bar {
+        padding: 8px 16px;
+        padding-bottom: calc(8px + var(--safe-bottom));
+      }
+      .hand-indicator {
+        padding: 6px 10px;
+        min-width: 55px;
+        gap: 2px;
+      }
+      .hand-emoji {
+        font-size: 1.3rem;
+      }
+      .hand-label {
+        font-size: 0.6rem;
+      }
+      .start-btn {
+        padding: 8px 20px;
+        font-size: 0.9rem;
+      }
+    }
 
     /* --- Desktop tweaks --- */
     @media (min-width: 768px) {
