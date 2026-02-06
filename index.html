@@ -2,249 +2,1065 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8" />
-  <title>Покажи цифру! ✋</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
+  <meta name="theme-color" content="#ff7f50" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <title>Покажи цифру! </title>
   <style>
-    body {
+    *, *::before, *::after {
+      box-sizing: border-box;
       margin: 0;
       padding: 0;
-      font-family: 'Comic Sans MS', sans-serif;
-      background: linear-gradient(135deg, #84fab0 0%, #8fd3f4 100%);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      min-height: 100vh;
     }
 
-    h1 {
-      color: white;
-      text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
-      margin-top: 15px;
-      font-size: 2rem;
-      text-align: center;
+    :root {
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+      --safe-left: env(safe-area-inset-left, 0px);
+      --safe-right: env(safe-area-inset-right, 0px);
+      --glass-bg: rgba(0, 0, 0, 0.45);
+      --glass-bg-hover: rgba(0, 0, 0, 0.6);
+      --glass-border: rgba(255, 255, 255, 0.12);
+      --coral: #ff7f50;
+      --green: #2ecc71;
+      --orange: #f39c12;
+      --red: #e74c3c;
+      --text: #ffffff;
     }
 
-    .game-container {
-      display: flex;
-      gap: 20px;
-      align-items: center;
-      flex-wrap: wrap;
-      justify-content: center;
-      padding: 20px;
-    }
-
-    #video-container {
-      position: relative;
-      border-radius: 15px;
+    html, body {
+      width: 100%;
+      height: 100%;
+      height: 100dvh;
       overflow: hidden;
-      box-shadow: 0 8px 20px rgba(0,0,0,0.3);
-      background: white;
+      background: #1a1a2e;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      color: var(--text);
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
     }
 
-    video {
-      width: 640px;
-      height: 480px;
+    /* --- Fullscreen video + canvas --- */
+    #webcam {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
       object-fit: cover;
-      transform: scaleX(-1); /* зеркальное отражение видео */
+      z-index: 0;
+    }
+    #webcam.mirrored {
+      transform: scaleX(-1);
     }
 
     #canvas {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      z-index: 1;
+      pointer-events: none;
+    }
+    #canvas.mirrored {
+      transform: scaleX(-1);
+    }
+
+    /* Confetti canvas */
+    #confettiCanvas {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      z-index: 5;
+      pointer-events: none;
+    }
+
+    /* --- Glass card mixin --- */
+    .glass {
+      background: var(--glass-bg);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid var(--glass-border);
+      border-radius: 16px;
+    }
+
+    /* --- Overlay layout --- */
+    .game-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      z-index: 3;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
+      pointer-events: none;
+    }
+    .game-overlay > * {
+      pointer-events: auto;
+    }
+
+    /* --- Top bar --- */
+    .top-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 16px;
+      padding-top: calc(12px + var(--safe-top));
+      gap: 10px;
+    }
+
+    .feedback-card {
+      padding: 8px 16px;
+      font-size: clamp(0.85rem, 2.5vw, 1.1rem);
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 50%;
+    }
+    .feedback-card.success {
+      background: rgba(46, 204, 113, 0.6);
+      border-color: rgba(46, 204, 113, 0.3);
+    }
+    .feedback-card.error {
+      background: rgba(231, 76, 60, 0.6);
+      border-color: rgba(231, 76, 60, 0.3);
+    }
+
+    .score-card {
+      padding: 8px 16px;
+      font-size: clamp(0.85rem, 2.5vw, 1.1rem);
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .score-card .score-value {
+      color: var(--coral);
+      font-size: clamp(1.1rem, 3vw, 1.5rem);
+    }
+
+    .flip-btn {
+      width: 44px; height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.3rem;
+      cursor: pointer;
+      border: none;
+      color: var(--text);
+      background: var(--glass-bg);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid var(--glass-border);
+      border-radius: 50%;
+      transition: background 0.2s;
+    }
+    .flip-btn:active {
+      background: var(--glass-bg-hover);
+    }
+    @media (hover: hover) {
+      .flip-btn:hover {
+        background: var(--glass-bg-hover);
+      }
+    }
+
+    /* --- Center area --- */
+    .center-area {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      flex: 1;
+      pointer-events: none;
+    }
+
+    .target-container {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* SVG timer ring */
+    .timer-ring {
+      width: clamp(140px, 40vw, 220px);
+      height: clamp(140px, 40vw, 220px);
+      transform: rotate(-90deg);
+    }
+    .timer-ring-bg {
+      fill: none;
+      stroke: rgba(255, 255, 255, 0.1);
+      stroke-width: 6;
+    }
+    .timer-ring-progress {
+      fill: none;
+      stroke: var(--green);
+      stroke-width: 6;
+      stroke-linecap: round;
+      transition: stroke 0.3s;
+    }
+
+    .target-number {
       position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
+      font-size: clamp(3.5rem, 15vw, 8rem);
+      font-weight: 800;
+      color: var(--coral);
+      text-shadow: 0 4px 20px rgba(0,0,0,0.5);
+      line-height: 1;
+      user-select: none;
     }
 
-    .info-panel {
-      background: white;
-      padding: 25px;
-      border-radius: 20px;
-      box-shadow: 0 6px 18px rgba(0,0,0,0.2);
+    .target-hint {
+      margin-top: 12px;
+      font-size: clamp(0.9rem, 3vw, 1.3rem);
+      font-weight: 600;
+      text-shadow: 0 2px 8px rgba(0,0,0,0.7);
+      opacity: 0.9;
+    }
+
+    /* --- Bottom bar --- */
+    .bottom-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      padding: 16px;
+      padding-bottom: calc(16px + var(--safe-bottom));
+      gap: 10px;
+    }
+
+    .hand-indicator {
+      padding: 10px 14px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      min-width: 70px;
+      transition: transform 0.15s;
+    }
+    .hand-indicator.pulse {
+      animation: handPulse 0.3s ease-out;
+    }
+    .hand-emoji {
+      font-size: clamp(1.5rem, 5vw, 2.2rem);
+    }
+    .hand-count {
+      font-size: clamp(0.8rem, 2vw, 1rem);
+      font-weight: 600;
+      opacity: 0.9;
+    }
+    .hand-label {
+      font-size: clamp(0.6rem, 1.5vw, 0.75rem);
+      opacity: 0.6;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .start-btn {
+      padding: 14px 32px;
+      font-size: clamp(1rem, 3vw, 1.25rem);
+      font-weight: 700;
+      border: none;
+      color: var(--text);
+      background: var(--coral);
+      border-radius: 50px;
+      cursor: pointer;
+      transition: transform 0.15s, box-shadow 0.15s;
+      box-shadow: 0 4px 20px rgba(255, 127, 80, 0.4);
+      white-space: nowrap;
+    }
+    .start-btn:active {
+      transform: scale(0.95);
+    }
+    .start-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .start-btn.stop {
+      background: var(--red);
+      box-shadow: 0 4px 20px rgba(231, 76, 60, 0.4);
+    }
+    @media (hover: hover) {
+      .start-btn:hover:not(:disabled) {
+        transform: scale(1.05);
+      }
+    }
+
+    /* --- Loading screen --- */
+    .loading-screen {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      z-index: 100;
+      background: #1a1a2e;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 24px;
+      transition: opacity 0.4s;
+    }
+    .loading-screen.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+    .loading-spinner {
+      width: 48px; height: 48px;
+      border: 4px solid rgba(255,255,255,0.15);
+      border-top-color: var(--coral);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    .loading-text {
+      font-size: 1.1rem;
+      opacity: 0.8;
       text-align: center;
-      max-width: 350px;
+      padding: 0 20px;
     }
-
-    .target {
-      font-size: 5rem;
-      color: #ff7f50;
-      margin: 20px 0;
-      font-weight: bold;
+    .loading-emoji {
+      font-size: 3rem;
       animation: popIn 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     }
 
-    .feedback {
-      font-size: 1.4rem;
-      margin-top: 15px;
-      min-height: 2em;
-      color: #2c3e50;
-      font-weight: bold;
-    }
-
-    .success { color: #2ecc71; }
-    .error { color: #e74c3c; }
-
+    /* --- Animations --- */
     @keyframes popIn {
       from { transform: scale(0); opacity: 0; }
       to { transform: scale(1); opacity: 1; }
     }
 
-    button.start-btn {
-      margin-top: 20px;
-      padding: 15px 30px;
-      font-size: 1.2rem;
-      border: none;
-      background-color: #6c5ce7;
-      color: white;
-      border-radius: 50px;
-      cursor: pointer;
-      transition: transform 0.2s, box-shadow 0.2s;
+    @keyframes correctPulse {
+      0% { transform: scale(1); }
+      30% { transform: scale(1.2); }
+      60% { transform: scale(0.95); }
+      100% { transform: scale(1); }
     }
 
-    button.start-btn:hover {
-      transform: scale(1.05);
-      box-shadow: 0 6px 18px rgba(108,92,231,0.4);
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      15% { transform: translateX(-8px); }
+      30% { transform: translateX(8px); }
+      45% { transform: translateX(-6px); }
+      60% { transform: translateX(6px); }
+      75% { transform: translateX(-3px); }
+      90% { transform: translateX(3px); }
     }
 
-    button.pause-btn {
-      margin-top: 10px;
-      padding: 12px 25px;
-      font-size: 1rem;
-      border: none;
-      background-color: #f39c12;
-      color: white;
-      border-radius: 50px;
-      cursor: pointer;
-      transition: transform 0.2s, box-shadow 0.2s;
+    @keyframes handPulse {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.15); }
+      100% { transform: scale(1); }
     }
 
-    button.pause-btn:hover {
-      transform: scale(1.05);
-      box-shadow: 0 6px 18px rgba(243,156,18,0.4);
+    @keyframes spin {
+      to { transform: rotate(360deg); }
     }
 
-    button.pause-btn.paused {
-      background-color: #e74c3c;
-    }
+    .anim-pop { animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+    .anim-correct { animation: correctPulse 0.5s ease-out; }
+    .anim-shake { animation: shake 0.5s ease-out; }
 
-    /* Таймер обратного отсчёта */
-    .timer-bar {
-      width: 100%;
-      height: 8px;
-      background: #ecf0f1;
-      border-radius: 4px;
-      overflow: hidden;
-      margin-top: 15px;
-    }
-
-    .timer-progress {
-      height: 100%;
-      background: linear-gradient(90deg, #2ecc71, #f39c12, #e74c3c);
-      width: 100%;
-      transition: width 0.1s linear;
-      border-radius: 4px;
-    }
-
-    /* Счётчик очков */
-    .score-board {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      padding: 15px;
-      border-radius: 15px;
-      margin-bottom: 15px;
-      text-align: center;
-      color: white;
-    }
-
-    .score-board .score {
-      font-size: 2rem;
-      font-weight: bold;
-    }
-
-    .score-board .label {
-      font-size: 0.9rem;
-      opacity: 0.9;
+    /* --- Desktop tweaks --- */
+    @media (min-width: 768px) {
+      .hand-indicator {
+        min-width: 90px;
+        padding: 12px 18px;
+      }
+      .top-bar, .bottom-bar {
+        padding-left: 24px;
+        padding-right: 24px;
+      }
     }
   </style>
 </head>
 <body>
 
-<h1>Покажи цифру! ✋</h1>
+<!-- Fullscreen video + hand skeleton canvas -->
+<video id="webcam" autoplay playsinline muted class="mirrored"></video>
+<canvas id="canvas" class="mirrored"></canvas>
+<canvas id="confettiCanvas"></canvas>
 
-<div class="game-container">
-  <div id="video-container">
-    <video id="webcam" autoplay playsinline muted></video>
-    <canvas id="canvas"></canvas>
+<!-- Loading screen -->
+<div class="loading-screen" id="loadingScreen">
+  <div class="loading-emoji">&#9995;</div>
+  <div class="loading-spinner"></div>
+  <div class="loading-text" id="loadingText">Загрузка MediaPipe...</div>
+</div>
+
+<!-- Game overlay -->
+<div class="game-overlay" id="gameOverlay">
+  <!-- Top bar: feedback, score, flip -->
+  <div class="top-bar">
+    <div class="feedback-card glass" id="feedbackCard">Загрузка...</div>
+    <div class="score-card glass" id="scoreCard">
+      <span>&#9733;</span>
+      <span class="score-value" id="scoreValue">0</span>
+    </div>
+    <button class="flip-btn" id="flipBtn" title="Переключить камеру" aria-label="Переключить камеру">&#128260;</button>
   </div>
 
-  <div class="info-panel">
-    <div class="score-board">
-      <div class="score" id="score">0</div>
-      <div class="label">Очков</div>
+  <!-- Center: target number + timer ring -->
+  <div class="center-area">
+    <div class="target-container" id="targetContainer">
+      <svg class="timer-ring" viewBox="0 0 120 120" id="timerRing">
+        <circle class="timer-ring-bg" cx="60" cy="60" r="54" />
+        <circle class="timer-ring-progress" cx="60" cy="60" r="54"
+                stroke-dasharray="339.292" stroke-dashoffset="0" id="timerProgress" />
+      </svg>
+      <div class="target-number" id="targetNum">?</div>
     </div>
-    <p>Покажи на пальцах:</p>
-    <div class="target" id="targetNum">?</div>
-    <div class="timer-bar">
-      <div class="timer-progress" id="timerProgress"></div>
+    <div class="target-hint" id="targetHint">&#128075; Покажи на пальцах!</div>
+  </div>
+
+  <!-- Bottom bar: left hand, start/stop, right hand -->
+  <div class="bottom-bar">
+    <div class="hand-indicator glass" id="leftHandIndicator">
+      <span class="hand-emoji" id="leftHandEmoji">&#9994;</span>
+      <span class="hand-count" id="leftHandCount">-</span>
+      <span class="hand-label">Левая</span>
     </div>
-    <div class="feedback" id="feedbackText">Загрузка...</div>
-    <div id="loadingIndicator" style="font-size: 0.8rem; color: #7f8c8d; margin-top: 10px;">Загрузка MediaPipe...</div>
-    <button class="start-btn" id="startBtn" onclick="toggleGame()" disabled>▶ Старт</button>
-    <button class="pause-btn" id="pauseBtn" onclick="togglePause()" style="display: none;">⏸ Пауза</button>
+
+    <button class="start-btn" id="startBtn" disabled>&#9654; Старт</button>
+
+    <div class="hand-indicator glass" id="rightHandIndicator">
+      <span class="hand-emoji" id="rightHandEmoji">&#9994;</span>
+      <span class="hand-count" id="rightHandCount">-</span>
+      <span class="hand-label">Правая</span>
+    </div>
   </div>
 </div>
 
-<!-- Подключаем MediaPipe - используем работающие версии CDN -->
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<!-- MediaPipe scripts -->
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
 
 <script>
-  // --- Конфигурация игры ---
-  const MAX_FINGERS = 10; // Для двух рук (по 5 пальцев на каждую)
-  const TARGET_DURATION = 8000; // 8 секунд на задание (если не угадал)
-  const CORRECT_DELAY = 2000; // 2 секунды показа "правильно" перед задержкой
-  const BETWEEN_TASKS_DELAY = 1500; // 1.5 секунды задержки между заданиями
-  const CONSENSUS_FRAMES = 14; // сколько кадров помнить (~400-500ms)
-  const CONSENSUS_THRESHOLD = 0.8; // 80% совпадений для стабильности
+  // ========== Configuration ==========
+  const MAX_FINGERS = 10;
+  const TARGET_DURATION = 8000;
+  const CORRECT_DELAY = 2000;
+  const BETWEEN_TASKS_DELAY = 1500;
+  const CONSENSUS_FRAMES = 14;
+  const CONSENSUS_THRESHOLD = 0.8;
+  const TIMER_CIRCUMFERENCE = 2 * Math.PI * 54; // ~339.292
+
+  // ========== State ==========
   let currentTarget = -1;
   let gameActive = false;
-  let gamePaused = false;
-  let lastTimeCorrect = 0;
   let stateStartTime = 0;
-  let gameMode = "ask"; // "ask" (задание), "correct" (правильно), "timeout" (время вышло), "delay" (задержка)
+  let gameMode = 'idle'; // idle, ask, correct, timeout, delay
   let score = 0;
-  let pauseTimeRemaining = 0; // Для сохранения оставшегося времени при паузе
 
-  // Буфер для стабилизации консенсусом
-  let consensusBuffer = []; // кольцевой буфер последних N значений
-  let processingCorrect = false; // флаг блокировки повторной обработки
-  let displayCount = null; // последнее стабильное значение для отображения
+  // Per-hand consensus buffers
+  let leftHandBuffer = [];
+  let rightHandBuffer = [];
+  let leftConsensus = null;
+  let rightConsensus = null;
+  let processingCorrect = false;
 
-  // DOM-элементы
-  const videoElement = document.getElementById('webcam');
-  const canvas = document.getElementById('canvas');
-  const ctx = canvas.getContext('2d');
-  const targetEl = document.getElementById('targetNum');
-  const feedbackEl = document.getElementById('feedbackText');
+  // Camera state
+  let currentFacingMode = 'user'; // 'user' or 'environment'
+  let currentStream = null;
+  let hands = null;
+  let animFrameId = null;
+
+  // ========== DOM Elements ==========
+  const videoEl = document.getElementById('webcam');
+  const canvasEl = document.getElementById('canvas');
+  const ctx = canvasEl.getContext('2d');
+  const confettiCanvas = document.getElementById('confettiCanvas');
+  const confettiCtx = confettiCanvas.getContext('2d');
+
+  const loadingScreen = document.getElementById('loadingScreen');
+  const loadingText = document.getElementById('loadingText');
+
+  const feedbackCard = document.getElementById('feedbackCard');
+  const scoreValue = document.getElementById('scoreValue');
+  const flipBtn = document.getElementById('flipBtn');
   const startBtn = document.getElementById('startBtn');
-  const pauseBtn = document.getElementById('pauseBtn');
-  const scoreEl = document.getElementById('score');
-  const timerProgressEl = document.getElementById('timerProgress');
-  const loadingIndicator = document.getElementById('loadingIndicator');
 
-  let hands;
-  let camera;
+  const targetContainer = document.getElementById('targetContainer');
+  const targetNum = document.getElementById('targetNum');
+  const targetHint = document.getElementById('targetHint');
+  const timerProgress = document.getElementById('timerProgress');
 
-  // Инициализация MediaPipe
-  async function setupMediaPipe() {
-    // Проверяем, загрузились ли скрипты MediaPipe
+  const leftHandIndicator = document.getElementById('leftHandIndicator');
+  const leftHandEmoji = document.getElementById('leftHandEmoji');
+  const leftHandCount = document.getElementById('leftHandCount');
+  const rightHandIndicator = document.getElementById('rightHandIndicator');
+  const rightHandEmoji = document.getElementById('rightHandEmoji');
+  const rightHandCount = document.getElementById('rightHandCount');
+
+  // ========== Emoji mapping for finger count ==========
+  const fingerEmojis = ['\u270A', '\u261D\uFE0F', '\u270C\uFE0F', '\uD83E\uDD1F', '\uD83D\uDD90\uFE0F', '\uD83D\uDD90\uFE0F'];
+  // 0=fist, 1=index, 2=peace, 3=love-you(🤟), 4=raised hand, 5=raised hand
+
+  function getFingerEmoji(count) {
+    if (count === null || count === undefined || count < 0) return '\u270A';
+    if (count > 5) return '\uD83D\uDD90\uFE0F';
+    return fingerEmojis[count];
+  }
+
+  // ========== Resize canvas to match video ==========
+  function resizeCanvas() {
+    canvasEl.width = window.innerWidth;
+    canvasEl.height = window.innerHeight;
+    confettiCanvas.width = window.innerWidth;
+    confettiCanvas.height = window.innerHeight;
+  }
+  window.addEventListener('resize', resizeCanvas);
+  resizeCanvas();
+
+  // ========== Per-hand finger counting ==========
+  function countFingersForOneHand(landmarks) {
+    const tips = [8, 12, 16, 20];
+    const pips = [6, 10, 14, 18];
+    const mcps = [5, 9, 13, 17];
+    const wrist = landmarks[0];
+    let count = 0;
+
+    function dist(p1, p2) {
+      return Math.sqrt((p1.x - p2.x) ** 2 + (p1.y - p2.y) ** 2);
+    }
+
+    function angle(a, b, c) {
+      const ab = { x: b.x - a.x, y: b.y - a.y };
+      const cb = { x: b.x - c.x, y: b.y - c.y };
+      const dot = ab.x * cb.x + ab.y * cb.y;
+      const magAB = Math.sqrt(ab.x ** 2 + ab.y ** 2);
+      const magCB = Math.sqrt(cb.x ** 2 + cb.y ** 2);
+      if (magAB === 0 || magCB === 0) return 0;
+      const cosAngle = Math.max(-1, Math.min(1, dot / (magAB * magCB)));
+      return Math.acos(cosAngle) * (180 / Math.PI);
+    }
+
+    // Four fingers (index, middle, ring, pinky)
+    for (let i = 0; i < tips.length; i++) {
+      const tip = landmarks[tips[i]];
+      const pip = landmarks[pips[i]];
+      const mcp = landmarks[mcps[i]];
+
+      const distTipToMCP = dist(tip, mcp);
+      const distPipToMCP = dist(pip, mcp);
+      const extendedRatio = distTipToMCP / distPipToMCP;
+      const pipAngle = angle(tip, pip, mcp);
+      const distTipToWrist = dist(tip, wrist);
+      const distMcpToWrist = dist(mcp, wrist);
+      const reachRatio = distTipToWrist / distMcpToWrist;
+
+      if (extendedRatio > 1.2 && pipAngle > 115 && reachRatio > 1.3) {
+        count++;
+      }
+    }
+
+    // Thumb
+    const thumbTip = landmarks[4];
+    const thumbIP = landmarks[3];
+    const thumbMCP = landmarks[2];
+    const indexTip = landmarks[8];
+
+    const thumbAngle = angle(thumbTip, thumbIP, thumbMCP);
+    const thumbTipToWrist = dist(thumbTip, wrist);
+    const thumbBaseToWrist = dist(thumbMCP, wrist);
+    const thumbIPToWrist = dist(thumbIP, wrist);
+    const distThumbToIndex = dist(thumbTip, indexTip);
+    const indexLength = dist(indexTip, landmarks[5]);
+    const thumbIsOpen = distThumbToIndex > indexLength * 0.8;
+
+    if (thumbAngle > 140 && thumbTipToWrist > thumbBaseToWrist * 0.9 &&
+        thumbTipToWrist > thumbIPToWrist && thumbIsOpen) {
+      count++;
+    }
+
+    return Math.min(count, 5);
+  }
+
+  // ========== Consensus ==========
+  function getConsensus(buffer, rawCount) {
+    buffer.push(rawCount);
+    if (buffer.length > CONSENSUS_FRAMES) buffer.shift();
+    if (buffer.length < CONSENSUS_FRAMES * 0.5) return null;
+
+    const freq = {};
+    for (const v of buffer) freq[v] = (freq[v] || 0) + 1;
+
+    let maxCount = 0, best = null;
+    for (const [val, cnt] of Object.entries(freq)) {
+      if (cnt > maxCount) { maxCount = cnt; best = parseInt(val); }
+    }
+    return (maxCount / buffer.length >= CONSENSUS_THRESHOLD) ? best : null;
+  }
+
+  // ========== Process MediaPipe results ==========
+  function onResults(results) {
+    // Always draw skeleton (even when game not active, for feedback)
+    ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+
+    const multiLandmarks = results.multiHandLandmarks;
+    const multiHandedness = results.multiHandedness;
+
+    if (!multiLandmarks || multiLandmarks.length === 0) {
+      if (gameActive && gameMode === 'ask') {
+        leftHandBuffer = [];
+        rightHandBuffer = [];
+        updateHandIndicators(null, null);
+        feedbackCard.textContent = '\uD83D\uDC4B \u041F\u043E\u043A\u0430\u0436\u0438 \u043D\u0430 \u043F\u0430\u043B\u044C\u0446\u0430\u0445!';
+        feedbackCard.className = 'feedback-card glass';
+      }
+      return;
+    }
+
+    // Determine canvas scale to map normalized coords to canvas pixels
+    const cw = canvasEl.width;
+    const ch = canvasEl.height;
+
+    // Draw each hand's skeleton
+    for (const landmarks of multiLandmarks) {
+      // Scale landmarks to canvas size for drawing
+      const scaledLandmarks = landmarks.map(pt => ({
+        x: pt.x * cw,
+        y: pt.y * ch,
+        z: pt.z
+      }));
+
+      drawConnectors(ctx, scaledLandmarks, HAND_CONNECTIONS, { color: 'rgba(0,255,100,0.6)', lineWidth: 2 });
+      drawLandmarks(ctx, scaledLandmarks, { color: 'rgba(255,80,60,0.8)', lineWidth: 1, radius: 3 });
+    }
+
+    if (!gameActive) return;
+
+    // Identify left/right hands and count fingers per hand
+    let rawLeft = null, rawRight = null;
+
+    for (let i = 0; i < multiLandmarks.length; i++) {
+      const landmarks = multiLandmarks[i];
+      const count = countFingersForOneHand(landmarks);
+
+      // MediaPipe labels assume mirrored input; when using rear camera the image is NOT mirrored
+      let label = 'Right'; // default
+      if (multiHandedness && multiHandedness[i] && multiHandedness[i].label) {
+        label = multiHandedness[i].label;
+      }
+
+      // MediaPipe returns handedness from the camera's perspective.
+      // For front (mirrored) camera, swap to match the user's perspective.
+      if (currentFacingMode === 'user') {
+        label = (label === 'Left') ? 'Right' : 'Left';
+      }
+
+      if (label === 'Left') {
+        rawLeft = count;
+      } else {
+        rawRight = count;
+      }
+    }
+
+    // Get consensus for each hand
+    if (rawLeft !== null) {
+      const c = getConsensus(leftHandBuffer, rawLeft);
+      if (c !== null) leftConsensus = c;
+    } else {
+      leftHandBuffer = [];
+      leftConsensus = null;
+    }
+
+    if (rawRight !== null) {
+      const c = getConsensus(rightHandBuffer, rawRight);
+      if (c !== null) rightConsensus = c;
+    } else {
+      rightHandBuffer = [];
+      rightConsensus = null;
+    }
+
+    updateHandIndicators(leftConsensus, rightConsensus);
+
+    // Total finger count
+    const totalLeft = leftConsensus !== null ? leftConsensus : 0;
+    const totalRight = rightConsensus !== null ? rightConsensus : 0;
+    const total = totalLeft + totalRight;
+
+    if (gameMode === 'ask') {
+      const handsDetected = (leftConsensus !== null || rightConsensus !== null);
+      if (handsDetected) {
+        feedbackCard.textContent = `\u0412\u0438\u0436\u0443 ${total} \u043F\u0430\u043B\u044C\u0446\u0430(\u043E\u0432)`;
+        feedbackCard.className = 'feedback-card glass';
+      }
+
+      if (!processingCorrect && handsDetected && currentTarget !== -1 && total === currentTarget) {
+        handleCorrect();
+      }
+    }
+  }
+
+  // ========== Hand indicator UI ==========
+  function updateHandIndicators(left, right) {
+    const prevLeft = leftHandEmoji.dataset.count;
+    const prevRight = rightHandEmoji.dataset.count;
+
+    if (left !== null) {
+      leftHandEmoji.textContent = getFingerEmoji(left);
+      leftHandCount.textContent = left;
+      if (String(left) !== prevLeft) {
+        leftHandIndicator.classList.remove('pulse');
+        void leftHandIndicator.offsetHeight;
+        leftHandIndicator.classList.add('pulse');
+      }
+    } else {
+      leftHandEmoji.textContent = '\u270A';
+      leftHandCount.textContent = '-';
+    }
+    leftHandEmoji.dataset.count = left;
+
+    if (right !== null) {
+      rightHandEmoji.textContent = getFingerEmoji(right);
+      rightHandCount.textContent = right;
+      if (String(right) !== prevRight) {
+        rightHandIndicator.classList.remove('pulse');
+        void rightHandIndicator.offsetHeight;
+        rightHandIndicator.classList.add('pulse');
+      }
+    } else {
+      rightHandEmoji.textContent = '\u270A';
+      rightHandCount.textContent = '-';
+    }
+    rightHandEmoji.dataset.count = right;
+  }
+
+  // ========== Timer ring ==========
+  function updateTimerRing(progress01) {
+    // progress01: 1.0 = full, 0.0 = empty
+    const offset = TIMER_CIRCUMFERENCE * (1 - progress01);
+    timerProgress.setAttribute('stroke-dashoffset', offset);
+
+    if (progress01 < 0.3) {
+      timerProgress.setAttribute('stroke', 'var(--red)');
+    } else if (progress01 < 0.6) {
+      timerProgress.setAttribute('stroke', 'var(--orange)');
+    } else {
+      timerProgress.setAttribute('stroke', 'var(--green)');
+    }
+  }
+
+  // ========== Game timer loop ==========
+  let timerInterval = null;
+
+  function startTimerLoop() {
+    stopTimerLoop();
+    timerInterval = setInterval(() => {
+      if (gameMode === 'ask') {
+        const elapsed = Date.now() - stateStartTime;
+        const remaining = Math.max(0, TARGET_DURATION - elapsed);
+        updateTimerRing(remaining / TARGET_DURATION);
+
+        if (elapsed > TARGET_DURATION) {
+          handleTimeout();
+        }
+      }
+    }, 50);
+  }
+
+  function stopTimerLoop() {
+    if (timerInterval) {
+      clearInterval(timerInterval);
+      timerInterval = null;
+    }
+  }
+
+  // ========== Game logic ==========
+  function handleCorrect() {
+    processingCorrect = true;
+    gameMode = 'correct';
+
+    feedbackCard.textContent = '\uD83C\uDF89 \u041C\u043E\u043B\u043E\u0434\u0435\u0446! \u041F\u0440\u0430\u0432\u0438\u043B\u044C\u043D\u043E!';
+    feedbackCard.className = 'feedback-card glass success';
+
+    score += 10;
+    scoreValue.textContent = score;
+
+    targetNum.classList.add('anim-correct');
+    playSound(true);
+    spawnConfetti();
+
+    setTimeout(() => {
+      targetNum.classList.remove('anim-correct');
+      gameMode = 'delay';
+      targetNum.textContent = '...';
+      targetHint.textContent = '\u0413\u043E\u0442\u043E\u0432\u044C\u0441\u044F...';
+      feedbackCard.textContent = '\u0413\u043E\u0442\u043E\u0432\u044C\u0441\u044F \u043A \u0441\u043B\u0435\u0434\u0443\u044E\u0449\u0435\u043C\u0443...';
+      feedbackCard.className = 'feedback-card glass';
+      updateTimerRing(1);
+
+      setTimeout(() => {
+        if (gameActive) nextTarget();
+      }, BETWEEN_TASKS_DELAY);
+    }, CORRECT_DELAY);
+  }
+
+  function handleTimeout() {
+    gameMode = 'timeout';
+    feedbackCard.textContent = '\u23F0 \u0412\u0440\u0435\u043C\u044F \u0432\u044B\u0448\u043B\u043E!';
+    feedbackCard.className = 'feedback-card glass error';
+    updateTimerRing(0);
+
+    targetContainer.classList.add('anim-shake');
+
+    setTimeout(() => {
+      targetContainer.classList.remove('anim-shake');
+      gameMode = 'delay';
+      targetNum.textContent = '...';
+      targetHint.textContent = '\u0413\u043E\u0442\u043E\u0432\u044C\u0441\u044F...';
+      feedbackCard.textContent = '\u0413\u043E\u0442\u043E\u0432\u044C\u0441\u044F \u043A \u0441\u043B\u0435\u0434\u0443\u044E\u0449\u0435\u043C\u0443...';
+      feedbackCard.className = 'feedback-card glass';
+
+      setTimeout(() => {
+        if (gameActive) nextTarget();
+      }, BETWEEN_TASKS_DELAY);
+    }, 2000);
+  }
+
+  function nextTarget() {
+    currentTarget = Math.floor(Math.random() * (MAX_FINGERS + 1));
+    targetNum.textContent = currentTarget;
+    targetHint.textContent = '\uD83D\uDC4B \u041F\u043E\u043A\u0430\u0436\u0438 \u043D\u0430 \u043F\u0430\u043B\u044C\u0446\u0430\u0445!';
+    feedbackCard.textContent = '\u041F\u043E\u043A\u0430\u0436\u0438 \u043D\u0430 \u043F\u0430\u043B\u044C\u0446\u0430\u0445!';
+    feedbackCard.className = 'feedback-card glass';
+    gameMode = 'ask';
+    stateStartTime = Date.now();
+    updateTimerRing(1);
+
+    leftHandBuffer = [];
+    rightHandBuffer = [];
+    leftConsensus = null;
+    rightConsensus = null;
+    processingCorrect = false;
+
+    targetNum.classList.remove('anim-pop');
+    void targetNum.offsetHeight;
+    targetNum.classList.add('anim-pop');
+  }
+
+  // ========== Camera management ==========
+  async function startCamera(facingMode) {
+    // Stop existing stream
+    if (currentStream) {
+      currentStream.getTracks().forEach(t => t.stop());
+      currentStream = null;
+    }
+
+    const constraints = {
+      video: {
+        facingMode: facingMode,
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+      },
+      audio: false
+    };
+
+    try {
+      currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+      videoEl.srcObject = currentStream;
+      await videoEl.play();
+
+      // Mirror front camera
+      if (facingMode === 'user') {
+        videoEl.classList.add('mirrored');
+        canvasEl.classList.add('mirrored');
+      } else {
+        videoEl.classList.remove('mirrored');
+        canvasEl.classList.remove('mirrored');
+      }
+
+      currentFacingMode = facingMode;
+      resizeCanvas();
+    } catch (err) {
+      console.error('Camera error:', err);
+      throw err;
+    }
+  }
+
+  // rAF loop to feed frames to MediaPipe
+  function startProcessingLoop() {
+    stopProcessingLoop();
+
+    async function loop() {
+      if (videoEl.readyState >= 2 && hands) {
+        try {
+          await hands.send({ image: videoEl });
+        } catch (e) {
+          // Ignore occasional frame send errors
+        }
+      }
+      animFrameId = requestAnimationFrame(loop);
+    }
+    animFrameId = requestAnimationFrame(loop);
+  }
+
+  function stopProcessingLoop() {
+    if (animFrameId) {
+      cancelAnimationFrame(animFrameId);
+      animFrameId = null;
+    }
+  }
+
+  // Flip camera
+  flipBtn.addEventListener('click', async () => {
+    const newMode = (currentFacingMode === 'user') ? 'environment' : 'user';
+    try {
+      flipBtn.disabled = true;
+      await startCamera(newMode);
+    } catch (e) {
+      console.warn('Could not switch camera:', e);
+      // Try to go back
+      try { await startCamera(currentFacingMode); } catch (_) {}
+    } finally {
+      flipBtn.disabled = false;
+    }
+  });
+
+  // ========== Start / Stop ==========
+  startBtn.addEventListener('click', () => {
+    if (gameActive) {
+      stopGame();
+    } else {
+      startGame();
+    }
+  });
+
+  async function startGame() {
+    if (gameActive) return;
+
+    feedbackCard.textContent = '\u0420\u0430\u0437\u0440\u0435\u0448\u0438\u0442\u0435 \u0434\u043E\u0441\u0442\u0443\u043F \u043A \u043A\u0430\u043C\u0435\u0440\u0435...';
+
+    try {
+      await startCamera(currentFacingMode);
+      startProcessingLoop();
+
+      gameActive = true;
+      score = 0;
+      scoreValue.textContent = score;
+      startBtn.textContent = '\u23F9 \u0421\u0442\u043E\u043F';
+      startBtn.classList.add('stop');
+
+      nextTarget();
+      startTimerLoop();
+    } catch (err) {
+      feedbackCard.textContent = '\u041E\u0448\u0438\u0431\u043A\u0430: ' + err.message;
+      feedbackCard.className = 'feedback-card glass error';
+    }
+  }
+
+  function stopGame() {
+    gameActive = false;
+    gameMode = 'idle';
+    stopTimerLoop();
+    stopProcessingLoop();
+
+    if (currentStream) {
+      currentStream.getTracks().forEach(t => t.stop());
+      currentStream = null;
+    }
+    videoEl.srcObject = null;
+
+    startBtn.textContent = '\u25B6 \u0421\u0442\u0430\u0440\u0442';
+    startBtn.classList.remove('stop');
+    targetNum.textContent = '?';
+    targetHint.textContent = '\u041D\u0430\u0436\u043C\u0438 \u0421\u0442\u0430\u0440\u0442!';
+    feedbackCard.textContent = '\u041D\u0430\u0436\u043C\u0438 \u0421\u0442\u0430\u0440\u0442, \u0447\u0442\u043E\u0431\u044B \u043D\u0430\u0447\u0430\u0442\u044C!';
+    feedbackCard.className = 'feedback-card glass';
+    updateTimerRing(0);
+    updateHandIndicators(null, null);
+
+    ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+  }
+
+  // ========== Sound ==========
+  function playSound(isSuccess) {
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      const actx = new AC();
+      const osc = actx.createOscillator();
+      const gain = actx.createGain();
+      osc.connect(gain);
+      gain.connect(actx.destination);
+
+      if (isSuccess) {
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(880, actx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(1760, actx.currentTime + 0.2);
+        gain.gain.setValueAtTime(0.3, actx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, actx.currentTime + 0.5);
+        osc.start();
+        osc.stop(actx.currentTime + 0.5);
+      }
+    } catch (e) { /* ignore */ }
+  }
+
+  // ========== Confetti ==========
+  let confettiParticles = [];
+  let confettiAnimId = null;
+
+  function spawnConfetti() {
+    const colors = ['#ff7f50', '#2ecc71', '#f39c12', '#e74c3c', '#6c5ce7', '#00cec9', '#fd79a8'];
+    const cx = confettiCanvas.width / 2;
+    const cy = confettiCanvas.height * 0.4;
+
+    for (let i = 0; i < 40; i++) {
+      confettiParticles.push({
+        x: cx + (Math.random() - 0.5) * 60,
+        y: cy + (Math.random() - 0.5) * 30,
+        vx: (Math.random() - 0.5) * 12,
+        vy: (Math.random() - 1) * 10 - 3,
+        size: Math.random() * 8 + 4,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        rotation: Math.random() * 360,
+        rotSpeed: (Math.random() - 0.5) * 15,
+        life: 1.0,
+        decay: 0.008 + Math.random() * 0.012
+      });
+    }
+
+    if (!confettiAnimId) {
+      animateConfetti();
+    }
+  }
+
+  function animateConfetti() {
+    confettiCtx.clearRect(0, 0, confettiCanvas.width, confettiCanvas.height);
+
+    for (let i = confettiParticles.length - 1; i >= 0; i--) {
+      const p = confettiParticles[i];
+      p.x += p.vx;
+      p.y += p.vy;
+      p.vy += 0.3; // gravity
+      p.rotation += p.rotSpeed;
+      p.life -= p.decay;
+
+      if (p.life <= 0) {
+        confettiParticles.splice(i, 1);
+        continue;
+      }
+
+      confettiCtx.save();
+      confettiCtx.translate(p.x, p.y);
+      confettiCtx.rotate((p.rotation * Math.PI) / 180);
+      confettiCtx.globalAlpha = p.life;
+      confettiCtx.fillStyle = p.color;
+      confettiCtx.fillRect(-p.size / 2, -p.size / 4, p.size, p.size / 2);
+      confettiCtx.restore();
+    }
+
+    if (confettiParticles.length > 0) {
+      confettiAnimId = requestAnimationFrame(animateConfetti);
+    } else {
+      confettiAnimId = null;
+    }
+  }
+
+  // ========== MediaPipe Initialization ==========
+  async function initMediaPipe() {
     if (typeof Hands === 'undefined') {
-      throw new Error('MediaPipe Hands не загружен. Проверьте подключение к интернету.');
-    }
-    if (typeof Camera === 'undefined') {
-      throw new Error('MediaPipe Camera не загружен. Проверьте подключение к интернету.');
-    }
-    if (typeof drawConnectors === 'undefined') {
-      throw new Error('MediaPipe Drawing utils не загружен.');
+      throw new Error('MediaPipe Hands not loaded');
     }
 
     hands = new Hands({
@@ -252,443 +1068,66 @@
     });
 
     hands.setOptions({
-      maxNumHands: 2, // Поддержка двух рук
-      modelComplexity: 0, // легковесная модель
+      maxNumHands: 2,
+      modelComplexity: 0,
       minDetectionConfidence: 0.7,
       minTrackingConfidence: 0.5
     });
 
-    hands.onResults((results) => {
-      if (!gameActive || gamePaused) return;
-      processFrame(results);
-    });
+    hands.onResults(onResults);
 
-    camera = new Camera(videoElement, {
-      onFrame: async () => await hands.send({image: videoElement}),
-      width: 640,
-      height: 480
-    });
-  }
-
-  // Распознавание количества пальцев (с поддержкой двух рук)
-  function countFingers(landmarksList) {
-    let totalCount = 0;
-
-    for (const landmarks of landmarksList) {
-      const tips = [8, 12, 16, 20]; // Кончики указательного, среднего, безымянного, мизинца
-      const pips = [6, 10, 14, 18]; // Средние суставы (PIP)
-      const thumbTip = 4;
-      const thumbIP = 3;
-      const thumbMCP = 2;
-      const wrist = landmarks[0];
-      const indexMCP = landmarks[5];
-      const pinkyMCP = landmarks[17];
-
-      let count = 0;
-
-      // Вспомогательная функция для расстояния
-      function dist(p1, p2) {
-        return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
-      }
-
-      // Вспомогательная функция для угла между тремя точками (в градусах)
-      function angle(a, b, c) {
-        const ab = { x: b.x - a.x, y: b.y - a.y };
-        const cb = { x: b.x - c.x, y: b.y - c.y };
-        const dot = ab.x * cb.x + ab.y * cb.y;
-        const magAB = Math.sqrt(ab.x * ab.x + ab.y * ab.y);
-        const magCB = Math.sqrt(cb.x * cb.x + cb.y * cb.y);
-        if (magAB === 0 || magCB === 0) return 0;
-        const cosAngle = Math.max(-1, Math.min(1, dot / (magAB * magCB)));
-        return Math.acos(cosAngle) * (180 / Math.PI);
-      }
-
-      // 1. Проверяем 4 пальца (указательный, средний, безымянный, мизинец)
-      // Используем комбинацию: расстояние от MCP + угол сгиба
-      const mcps = [5, 9, 13, 17]; // MCP суставы (основания пальцев)
-
-      for (let i = 0; i < tips.length; i++) {
-        const tip = landmarks[tips[i]];
-        const pip = landmarks[pips[i]];
-        const mcp = landmarks[mcps[i]];
-        const dip = landmarks[tips[i] - 1]; // DIP сустав (между PIP и tip)
-
-        // Проверка 1: кончик должен быть дальше от MCP чем PIP
-        const distTipToMCP = dist(tip, mcp);
-        const distPipToMCP = dist(pip, mcp);
-        const extendedRatio = distTipToMCP / distPipToMCP;
-
-        // Проверка 2: угол сгиба в PIP должен быть почти прямым (>140°)
-        const pipAngle = angle(tip, pip, mcp);
-
-        // Проверка 3: расстояние от запястья
-        const distTipToWrist = dist(tip, wrist);
-        const distMcpToWrist = dist(mcp, wrist);
-        const reachRatio = distTipToWrist / distMcpToWrist;
-
-        // Палец разогнут только если выполнены ВСЕ условия (тонкая настройка)
-        if (extendedRatio > 1.2 && pipAngle > 115 && reachRatio > 1.3) {
-          count++;
-        }
-      }
-
-      // 2. Проверяем большой палец
-      const thumbTipPos = landmarks[thumbTip];
-      const thumbIPPos = landmarks[thumbIP];
-      const thumbMCPPos = landmarks[thumbMCP];
-
-      // Проверка 1: угол в суставе большого пальца (должен быть разогнут)
-      const thumbAngle = angle(thumbTipPos, thumbIPPos, thumbMCPPos);
-
-      // Проверка 2: расстояние от кончика до запястья
-      const thumbTipToWrist = dist(thumbTipPos, wrist);
-      const thumbBaseToWrist = dist(thumbMCPPos, wrist);
-
-      // Проверка 3: большой палец не должен быть согнут внутрь
-      const thumbIPToWrist = dist(thumbIPPos, wrist);
-
-      // Большой палец разогнут если:
-      // - угол > 140° (прямой)
-      // - кончик далеко от запястья (>90% длины от основания до запястья)
-      // - кончик дальше от запястья чем IP (не согнут внутрь)
-      if (thumbAngle > 140 && thumbTipToWrist > thumbBaseToWrist * 0.9 &&
-          thumbTipToWrist > thumbIPToWrist) {
-        count += 1;
-      }
-
-      totalCount += count;
-    }
-
-    return Math.min(totalCount, MAX_FINGERS);
-  }
-
-  // Получить стабильное значение через консенсус буфера
-  function getConsensusValue(rawCount) {
-    // Добавляем текущее значение в буфер
-    consensusBuffer.push(rawCount);
-
-    // Ограничиваем размер буфера
-    if (consensusBuffer.length > CONSENSUS_FRAMES) {
-      consensusBuffer.shift();
-    }
-
-    // Если буфер недостаточно заполнен, возвращаем null (нет стабильного значения)
-    if (consensusBuffer.length < CONSENSUS_FRAMES * 0.5) {
-      return null;
-    }
-
-    // Считаем частоту каждого значения
-    const frequency = {};
-    for (const value of consensusBuffer) {
-      frequency[value] = (frequency[value] || 0) + 1;
-    }
-
-    // Находим значение с максимальной частотой
-    let maxCount = 0;
-    let consensusValue = null;
-    for (const [value, count] of Object.entries(frequency)) {
-      if (count > maxCount) {
-        maxCount = count;
-        consensusValue = parseInt(value);
-      }
-    }
-
-    // Проверяем порог консенсуса
-    const consensusRatio = maxCount / consensusBuffer.length;
-    if (consensusRatio >= CONSENSUS_THRESHOLD) {
-      return consensusValue;
-    }
-
-    return null; // Нет стабильного консенсуса
-  }
-
-  function processFrame(results) {
-    // 🔧 ИСПРАВЛЕНИЕ: Очищаем канвас перед отрисовкой
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    const landmarksList = results.multiHandLandmarks;
-
-    if (!landmarksList || landmarksList.length === 0) {
-      // Очищаем буфер если рук нет
-      consensusBuffer = [];
-      feedbackEl.textContent = "Покажи на пальцах!";
-      feedbackEl.className = "feedback";
-      return;
-    }
-
-    // Рисуем все руки
-    for (const landmarks of landmarksList) {
-      // 🔧 ИСПРАВЛЕНИЕ: Зеркалим рисование скелета (но не видео!)
-      ctx.save(); 
-      ctx.translate(canvas.width / 2, canvas.height / 2);
-      ctx.scale(-1, 1); 
-      ctx.translate(-canvas.width / 2, -canvas.height / 2);
-
-      // Рисуем руку
-      drawConnectors(ctx, landmarks, HAND_CONNECTIONS, {color: '#00FF00', lineWidth: 2});
-      drawLandmarks(ctx, landmarks, {color: '#FF0000', lineWidth: 1, radius: 2});
-
-      ctx.restore(); // возвращаем состояние контекста
-    }
-
-    const rawFingerCount = countFingers(landmarksList);
-    const stableCount = getConsensusValue(rawFingerCount);
-
-    // Обновляем отображение только при стабильном значении (плавность)
-    if (stableCount !== null) {
-      displayCount = stableCount;
-    }
-    // Если нет стабильного значения, показываем "..." или последнее стабильное
-    const displayText = displayCount !== null ? displayCount : "...";
-    feedbackEl.textContent = `Вижу ${displayText} пальца(ов)`;
-
-    // Проверяем правильность только если есть стабильное значение и мы в режиме "ask"
-    if (gameMode === "ask" && !processingCorrect && stableCount !== null && currentTarget !== -1 && stableCount === currentTarget) {
-      handleCorrect(stableCount);
-    }
-
-    // Проверка таймаута задания и обновление таймера
-    if (gameMode === "ask") {
-      const now = Date.now();
-      const elapsed = now - stateStartTime;
-      const remaining = Math.max(0, TARGET_DURATION - elapsed);
-      const progress = (remaining / TARGET_DURATION) * 100;
-      timerProgressEl.style.width = progress + '%';
-
-      // Меняем цвет таймера при малом времени
-      if (progress < 30) {
-        timerProgressEl.style.background = '#e74c3c';
-      } else if (progress < 60) {
-        timerProgressEl.style.background = '#f39c12';
-      } else {
-        timerProgressEl.style.background = 'linear-gradient(90deg, #2ecc71, #f39c12, #e74c3c)';
-      }
-
-      if (elapsed > TARGET_DURATION) {
-        gameMode = "timeout";
-        feedbackEl.textContent = "Время вышло! Попробуй ещё раз.";
-        feedbackEl.className = "feedback error";
-        timerProgressEl.style.width = '0%';
-        setTimeout(() => {
-          // Показываем задержку перед следующим заданием
-          gameMode = "delay";
-          targetEl.textContent = "...";
-          feedbackEl.textContent = "Готовься к следующему...";
-          feedbackEl.className = "feedback";
-          setTimeout(() => {
-            nextTarget();
-          }, BETWEEN_TASKS_DELAY);
-        }, 2000);
-      }
-    } else {
-      // Скрываем таймер если не в режиме задания
-      timerProgressEl.style.width = gameMode === "delay" ? '100%' : '0%';
-    }
-  }
-
-  function handleCorrect(count) {
-    // Блокируем повторную обработку
-    processingCorrect = true;
-    lastTimeCorrect = Date.now();
-
-    gameMode = "correct";
-    feedbackEl.textContent = "Молодец! Правильно! 🎉";
-    feedbackEl.className = "feedback success";
-    playSound(true);
-
-    // Увеличиваем счёт
-    score += 10;
-    scoreEl.textContent = score;
-
-    setTimeout(() => {
-      // Показываем задержку перед следующим заданием
-      gameMode = "delay";
-      targetEl.textContent = "...";
-      feedbackEl.textContent = "Готовься к следующему...";
-      feedbackEl.className = "feedback";
-
-      setTimeout(() => {
-        nextTarget();
-      }, BETWEEN_TASKS_DELAY);
-    }, CORRECT_DELAY);
-  }
-
-  function nextTarget() {
-    currentTarget = Math.floor(Math.random() * (MAX_FINGERS + 1)); // 0..10
-    targetEl.textContent = currentTarget;
-    feedbackEl.textContent = "Покажи на пальцах!";
-    feedbackEl.className = "feedback";
-    gameMode = "ask";
-    stateStartTime = Date.now();
-
-    // Сбрасываем таймер
-    timerProgressEl.style.width = '100%';
-    timerProgressEl.style.background = 'linear-gradient(90deg, #2ecc71, #f39c12, #e74c3c)';
-
-    // Сбрасываем буфер консенсуса и флаг обработки для нового задания
-    consensusBuffer = [];
-    processingCorrect = false;
-    displayCount = null;
-
-    targetEl.style.animation = 'none';
-    void targetEl.offsetHeight;
-    targetEl.style.animation = 'popIn 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
-  }
-
-  // Переключение игры (старт/стоп)
-  function toggleGame() {
-    if (gameActive) {
-      stopGame();
-    } else {
-      startGame();
-    }
-  }
-
-  // Остановка игры
-  function stopGame() {
-    gameActive = false;
-    gamePaused = false;
-    startBtn.textContent = "▶ Старт";
-    pauseBtn.style.display = "none";
-    targetEl.textContent = "?";
-    feedbackEl.textContent = "Нажми «Старт», чтобы начать!";
-    feedbackEl.className = "feedback";
-    timerProgressEl.style.width = '0%';
-    score = 0;
-    scoreEl.textContent = score;
-
-    if (camera) {
-      camera.stop();
-    }
-  }
-
-  // Пауза/Продолжение
-  function togglePause() {
-    gamePaused = !gamePaused;
-
-    if (gamePaused) {
-      pauseBtn.textContent = "▶ Продолжить";
-      pauseBtn.classList.add("paused");
-      feedbackEl.textContent = "Игра на паузе";
-      feedbackEl.className = "feedback";
-    } else {
-      pauseBtn.textContent = "⏸ Пауза";
-      pauseBtn.classList.remove("paused");
-      feedbackEl.textContent = "Покажи на пальцах!";
-      feedbackEl.className = "feedback";
-      // Сбрасываем время начала задания чтобы компенсировать паузу
-      stateStartTime = Date.now();
-    }
-  }
-
-  function playSound(isSuccess) {
+    // Initialize model by sending a blank frame
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = 64;
+    tempCanvas.height = 64;
     try {
-      const AudioContext = window.AudioContext || window.webkitAudioContext;
-      if (!AudioContext) return;
-      const ctx = new AudioContext();
-      const osc = ctx.createOscillator();
-      const gainNode = ctx.createGain();
-
-      osc.connect(gainNode);
-      gainNode.connect(ctx.destination);
-
-      if (isSuccess) {
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(880, ctx.currentTime); 
-        osc.frequency.exponentialRampToValueAtTime(1760, ctx.currentTime + 0.2);
-        gainNode.gain.setValueAtTime(0.3, ctx.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
-        osc.start();
-        osc.stop(ctx.currentTime + 0.5);
-      }
+      await hands.send({ image: tempCanvas });
     } catch (e) {
-      console.warn("AudioContext not available or blocked");
+      // Expected on first send sometimes
     }
   }
 
-  async function startGame() {
-    if (gameActive) return;
-
-    console.log("Starting game...");
-    feedbackEl.textContent = "Разрешите доступ к камере...";
-
-    try {
-      console.log("Setting up MediaPipe...");
-      await setupMediaPipe();
-      console.log("Starting camera...");
-      await camera.start();
-      console.log("Camera started!");
-      gameActive = true;
-      gamePaused = false;
-      score = 0;
-      scoreEl.textContent = score;
-      startBtn.textContent = "⏹ Стоп";
-      pauseBtn.style.display = "inline-block";
-      pauseBtn.textContent = "⏸ Пауза";
-      pauseBtn.classList.remove("paused");
-      nextTarget();
-      feedbackEl.textContent = "Покажи на пальцах!";
-      feedbackEl.className = "feedback";
-    } catch (err) {
-      console.error("Error starting game:", err);
-      feedbackEl.textContent = "Ошибка: " + err.message;
-      feedbackEl.className = "feedback error";
-    }
-  }
-
-  // Предзагрузка - проверка загрузки скриптов
-  window.onload = async () => {
-    console.log("Page loaded, waiting for MediaPipe...");
-
-    // Ждём загрузки скриптов MediaPipe
+  // ========== Boot ==========
+  window.addEventListener('load', async () => {
     let attempts = 0;
-    const maxAttempts = 100; // 10 секунд максимум
+    const maxAttempts = 100;
 
-    const checkLoaded = () => {
-      const loaded = typeof Hands !== 'undefined' &&
-             typeof Camera !== 'undefined' &&
-             typeof drawConnectors !== 'undefined' &&
-             typeof drawLandmarks !== 'undefined' &&
-             typeof HAND_CONNECTIONS !== 'undefined';
-      console.log("Checking MediaPipe:", loaded, {
-        Hands: typeof Hands,
-        Camera: typeof Camera,
-        drawConnectors: typeof drawConnectors,
-        HAND_CONNECTIONS: typeof HAND_CONNECTIONS
-      });
-      return loaded;
-    };
+    const checkLoaded = () =>
+      typeof Hands !== 'undefined' &&
+      typeof drawConnectors !== 'undefined' &&
+      typeof drawLandmarks !== 'undefined' &&
+      typeof HAND_CONNECTIONS !== 'undefined';
 
     while (!checkLoaded() && attempts < maxAttempts) {
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(r => setTimeout(r, 100));
       attempts++;
       if (attempts % 10 === 0) {
-        loadingIndicator.textContent = `Загрузка MediaPipe... (${attempts/10}s)`;
+        loadingText.textContent = `\u0417\u0430\u0433\u0440\u0443\u0437\u043A\u0430 MediaPipe... (${attempts / 10}\u0441)`;
       }
     }
 
     if (!checkLoaded()) {
-      console.error("MediaPipe scripts failed to load");
-      loadingIndicator.textContent = "Ошибка загрузки. Обновите страницу.";
-      feedbackEl.textContent = "Ошибка: не удалось загрузить MediaPipe";
-      feedbackEl.className = "feedback error";
-      startBtn.disabled = true;
+      loadingText.textContent = '\u041E\u0448\u0438\u0431\u043A\u0430 \u0437\u0430\u0433\u0440\u0443\u0437\u043A\u0438. \u041E\u0431\u043D\u043E\u0432\u0438\u0442\u0435 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0443.';
       return;
     }
 
-    loadingIndicator.style.display = "none";
-    startBtn.disabled = false;
-    feedbackEl.textContent = "Нажми «Старт», чтобы начать!";
-
     try {
-      await setupMediaPipe();
-      startBtn.textContent = "▶ Начать игру";
-      console.log("MediaPipe initialized successfully!");
+      loadingText.textContent = '\u0418\u043D\u0438\u0446\u0438\u0430\u043B\u0438\u0437\u0430\u0446\u0438\u044F \u043C\u043E\u0434\u0435\u043B\u0438...';
+      await initMediaPipe();
+
+      loadingScreen.classList.add('hidden');
+      startBtn.disabled = false;
+      feedbackCard.textContent = '\u041D\u0430\u0436\u043C\u0438 \u0421\u0442\u0430\u0440\u0442, \u0447\u0442\u043E\u0431\u044B \u043D\u0430\u0447\u0430\u0442\u044C!';
+      targetHint.textContent = '\u041D\u0430\u0436\u043C\u0438 \u0421\u0442\u0430\u0440\u0442!';
     } catch (e) {
-      console.error("Setup failed:", e);
-      startBtn.textContent = "▶ Начать игру";
+      loadingText.textContent = '\u041E\u0448\u0438\u0431\u043A\u0430: ' + e.message;
     }
-  };
+  });
+
+  // ========== PWA Service Worker ==========
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
+  }
 </script>
 </body>
 </html>
